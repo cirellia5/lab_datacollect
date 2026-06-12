@@ -10,7 +10,6 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: senha123
-      POSTGRES_DB: ldc_db
     ports:
       - "5442:5432" # Porta mapeada para acesso externo via DBeaver
     volumes:
