@@ -1,4 +1,4 @@
-# Pilar 3: Fluxo Contínuo de Dados (Streaming e CDC)
+# Fluxo Contínuo de Dados (Streaming e CDC)
 
 Este diretório contém a infraestrutura e os scripts necessários para a realização dos laboratórios práticos focado em **Ingestão Contínua de Dados** e **Change Data Capture (CDC)**. 
 
