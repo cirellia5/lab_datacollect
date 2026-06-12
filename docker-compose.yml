@@ -2,17 +2,22 @@ version: '3.8'
 
 services:
   # ============================================================================
-  # 1. PostgreSQL (Banco Transacional OLTP e Relacional)
+  # 1. PostgreSQL (Banco Transacional OLTP - Configurado para CDC)
   # ============================================================================
   postgres:
     image: postgres:15-alpine
     container_name: ldc_postgres
     environment:
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: senha123
+      POSTGRES_DB: ldc_db
     ports:
       - "5442:5432" # Porta mapeada para acesso externo via DBeaver
     volumes:
       - pg_data:/var/lib/postgresql/data
+    # IMPORTANTE: Modifica o motor do Postgres para habilitar o WAL Lógico.
+    # Sem esses parâmetros, o Debezium não consegue capturar os eventos de CDC.
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4", "-c", "max_wal_senders=4"]
     restart: always
 
   # ============================================================================
@@ -26,14 +31,62 @@ services:
       MINIO_ROOT_PASSWORD: root12345678
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000" # Porta da API S3 - Usada pelo PySpark
+      - "9000:9000" # Porta da API S3 - Usada pelo PySpark para gravar o streaming
       - "9001:9001" # Porta do Console Web UI - Acesso pelo Navegador
     volumes:
       - minio_data:/data
     restart: always
 
   # ============================================================================
-  # 3. Ambiente PySpark + Python (Processamento)
+  # 3. Apache Kafka (Plataforma de Mensageria e Eventos em Tempo Real)
+  # ============================================================================
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: ldc_kafka
+    ports:
+      - "9092:9092" # Porta para acesso externo (sua máquina física / ferramentas de UI)
+    environment:
+      KAFKA_NODE_ID: 1
+      # Configurações para rodar o Kafka em modo KRaft (Moderno, sem necessidade de Zookeeper)
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REREPLICATION_FACTOR: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk' # ID único do cluster necessário para o KRaft
+    restart: always
+
+  # ============================================================================
+  # 4. Debezium Connect (Motor de Captura de Mudanças - CDC)
+  # ============================================================================
+  debezium:
+    image: debezium/connect:2.5
+    container_name: ldc_debezium
+    ports:
+      - "8083:8083" # API REST usada para criar, monitorar e deletar os conectores de CDC
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092 # Aponta para o broker Kafka na rede interna do Docker
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: my_connect_configs
+      OFFSET_STORAGE_TOPIC: my_connect_offsets
+      STATUS_STORAGE_TOPIC: my_connect_statuses
+      # Converte os dados capturados do banco em mensagens formato JSON para o Kafka
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+    depends_on:
+      - kafka
+      - postgres
+    restart: always
+
+  # ============================================================================
+  # 5. Ambiente PySpark + Python (Consumidor e Processador do Streaming)
   # ============================================================================
   pyspark:
     image: jupyter/pyspark-notebook:spark-3.5.0
@@ -46,15 +99,17 @@ services:
     command: start-notebook.sh --ServerApp.token='' --ServerApp.password=''
     ports:
       - "8888:8888" # Interface Web do Jupyter Lab no navegador
-      - "4040:4040" # Spark UI para monitoramento de Jobs
+      - "4040:4040" # Spark UI para monitoramento de Jobs (fundamental para ver o streaming rodando)
     volumes:
       # Ponte/Espelhamento entre sua pasta local e o interior do contêiner
       - ./workspace:/home/jovyan/work
     depends_on:
       - postgres
       - minio
+      - kafka
+    restart: always
 
-# Volumes persistentes para armazenamento de dados
+# Volumes persistentes para armazenamento de dados do banco e do Object Storage
 volumes:
   pg_data:
   minio_data:
