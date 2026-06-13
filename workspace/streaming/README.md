@@ -13,13 +13,13 @@ O ecossistema é composto por 4 serviços principais que rodam isolados em cont�
 1. **PostgreSQL (`ldc_postgres`):** - **Papel:** Banco de dados de origem (OLTP).
    - **Configuração Técnica:** Configurado com `wal_level=logical`. O *Write-Ahead Logging* (WAL) no modo lógico instrui o Postgres a salvar um histórico detalhado e estruturado de todas as alterações de dados (`INSERT`, `UPDATE`, `DELETE`) diretamente em disco, permitindo que ferramentas externas consumam esse fluxo sem onerar a performance de consultas da aplicação com queries de `SELECT`.
 
-2. **Apache Kafka (`ldc_kafka` - Modo KRaft):**
-   - **Papel:** Plataforma distribuída de streaming de eventos e mensageria.
-   - **Configuração Técnica:** Roda no modo moderno **KRaft (Kafka Raft metadata mode)**, eliminando totalmente a dependência do Apache Zookeeper. Ele atua como um buffer altamente resiliente, recebendo os eventos de CDC produzidos e disponibilizando-os em tópicos estruturados para consumo imediato ou assíncrono.
-
-3. **Debezium Connect (`ldc_debezium`):**
+2. **Debezium Connect (`ldc_debezium`):**
    - **Papel:** Motor de captura de mudanças (CDC).
    - **Configuração Técnica:** Conecta-se ao slot de replicação lógica do PostgreSQL usando o plugin `pgoutput`. O Debezium monitora o WAL do banco continuamente e, a cada alteração detectada, encapsula o estado anterior (`before`) e o estado posterior (`after`) do registro em um payload JSON estruturado, enviando-o imediatamente para o tópico correspondente no Kafka.
+
+3. **Apache Kafka (`ldc_kafka` - Modo KRaft):**
+   - **Papel:** Plataforma distribuída de streaming de eventos e mensageria.
+   - **Configuração Técnica:** Roda no modo moderno **KRaft (Kafka Raft metadata mode)**, eliminando totalmente a dependência do Apache Zookeeper. Ele atua como um buffer altamente resiliente, recebendo os eventos de CDC produzidos e disponibilizando-os em tópicos estruturados para consumo imediato ou assíncrono.
 
 4. **MinIO (`ldc_minio`):**
    - **Papel:** Object Storage (Simulador de AWS S3).
@@ -37,9 +37,9 @@ O ecossistema é composto por 4 serviços principais que rodam isolados em cont�
   - Ativa filtros de isolamento (`table.include.list`) para escutar exclusivamente a tabela `public.pedidos`, ignorando tabelas legadas ou fora do escopo de tempo real.
   - Define as regras de conversão de tipos de dados e desativa metadados redundantes de esquemas (`schemas.enable: false`) para otimizar o tamanho das mensagens trafegadas no Kafka.
 
-### `ython_native_streaming_pedidos.ipynb`
+### `Python_native_streaming_pedidos.ipynb`
 * **Tipo:** Jupyter Notebook (Mecanismo Consumidor e Processador).
-* **Propósito Técnico:** Substitui motores complexos de processamento distribuído (como Spark Structured Streaming) por uma implementação puramente baseada em Python Nativo. Serve para ensinar aos alunos a lógica interna de um motor de processamento de fluxo contínuo.
+* **Propósito Técnico:** Substitui motores complexos de processamento distribuído (como Spark Structured Streaming) por uma implementação puramente baseada em Python Nativo. Serve para demonstrar a lógica interna de um motor de processamento de fluxo contínuo.
 * **Componentes Críticos Implementados:**
   - **Loop de Polling Infinito:** Utiliza o método `consumer.poll()` da biblioteca `kafka-python` para buscar blocos de dados continuamente do Kafka de forma assíncrona, evitando travamentos de thread se o fluxo de mensagens diminuir.
   - **Estratégia Computacional de Micro-Batch:** Demonstra a solução para o clássico *Small File Problem* (Problema dos Arquivos Pequenos) em Data Lakes. Em vez de salvar um arquivo no MinIO para cada mensagem que chega (o que degradaria a performance de leitura), o script mantém uma lista em memória (*buffer*) e realiza um "Flush" (escrita em lote) apenas quando uma das duas condições limite for atingida: **5 mensagens acumuladas** OU **10 segundos de tempo decorrido**.
@@ -52,11 +52,10 @@ O ecossistema é composto por 4 serviços principais que rodam isolados em cont�
 
 Para executar e validar a esteira completa durante as aulas práticas, siga os seguintes passos de maneira sequencial:
 
-1. **Inicialização da Infraestrutura:** Garanta que o comando `docker compose up -d` foi executado na raiz do projeto e que todos os contêineres estejam com o status verde (Running).
-2. **Criação do Schema e Tabelas:** Conecte uma IDE de banco de dados (ex: VS Code Database Client ou DBeaver) na porta externa `5442` e execute o script `database/ddl_cenarios_data_collect.sql` para criar a tabela de `pedidos` e seus respectivos triggers.
-3. **Ativação do CDC:** Abra e execute o notebook `01_configura_cdc_debezium.ipynb`. Valide se o retorno da API foi o código HTTP `211` ou `201`, confirmando que o Debezium começou a escutar o banco.
-4. **Inicialização do Consumidor:** Abra o notebook `02_python_native_streaming_pedidos.ipynb` e execute todas as células. O script entrará em estado de monitoramento contínuo, exibindo a mensagem: `Aguardando eventos do Postgres/Debezium...`.
-5. **Simulação de Carga Transacional:** Vá até a sua IDE de banco de dados e execute comandos DML para testar a reatividade da esteira:
-   - Execute um `INSERT` criando um novo pedido com o status `PENDENTE`. Observe o terminal do notebook capturar o evento instantaneamente.
-   - Execute um `UPDATE` modificando o status desse mesmo pedido para `PAGO`. Observe o conector de CDC capturando a mutação do dado em milissegundos.
-6. **Validação do Data Lake:** Insira mais registros para estourar o limite do buffer ou aguarde 10 segundos para acionar o timer de segurança. Acesse a interface web do MinIO (`http://localhost:9001`) e comprove a criação automática dos arquivos estruturados no padrão `.jsonl` dentro do bucket `datalake/live/pedidos/`.
+1. **Ativação do CDC:** Abra e execute o notebook `01_configura_cdc_debezium.ipynb`. Valide se o retorno da API foi o código HTTP `211` ou `201`, confirmando que o Debezium começou a escutar o banco.
+2. **Inicialização do Consumidor:** Abra o notebook `02_python_native_streaming_pedidos.ipynb` e execute todas as células. O script entrará em estado de monitoramento contínuo, exibindo a mensagem: `Aguardando eventos do Postgres/Debezium...`.
+3. **Simulação de Carga Transacional:** Vá até a sua IDE de banco de dados e execute comandos DML para testar a reatividade da esteira em tempo real:
+   - **Cenário de Inclusão (INSERT):** Crie um novo pedido com o status PENDENTE. Observe o terminal do notebook capturar o evento instantaneamente, exibindo a tag (INSERT) e o conteúdo do campo payload.after. 
+   - **Cenário de Alteração (UPDATE):** Modifique o status desse mesmo pedido para PAGO. Observe o conector de CDC capturar a mutação do dado em milissegundos, mostrando a evolução do status para (UPDATE).
+   - **Cenário de Exclusão (DELETE):** Apague esse pedido da tabela do banco de dados. Observe a mágica do CDC acontecer: mesmo que o registro tenha sumido fisicamente do banco de origem (OLTP), o terminal do notebook interceptará o evento exibindo o alerta [DELETE] e recuperará com sucesso os dados que existiam na linha antes de ela ser deletada (lidos a partir do payload.before).
+4. **Validação do Data Lake:** Insira mais registros para estourar o limite do buffer ou aguarde 10 segundos para acionar o timer de segurança. Acesse a interface web do MinIO (`http://localhost:9001`) e comprove a criação automática dos arquivos estruturados no padrão `.jsonl` dentro do bucket `datalake/live/pedidos/`.
