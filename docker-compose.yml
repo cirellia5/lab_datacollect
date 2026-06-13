@@ -92,6 +92,7 @@ services:
     environment:
       JUPYTER_ENABLE_LAB: "yes"
       GRANT_SUDO: "yes"
+      
     # Este comando desativa a exigência de token e senha no Jupyter Lab
     command: start-notebook.sh --ServerApp.token='' --ServerApp.password=''
     ports:
