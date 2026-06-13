@@ -30,3 +30,10 @@ SELECT
     slot_type, 
     active 
 FROM pg_replication_slots;
+
+-- 5. Verificação das Publicações de Replicação Lógica
+-- Essa consulta mostra se a "publicação" (o mecanismo que define quais tabelas enviam dados) foi criada com sucesso.
+-- O que avaliar no resultado para os alunos:
+-- pubname: O nome da publicação. Deve corresponder exatamente ao nome configurado no Debezium (o padrão costuma ser 'dbz_publication'). Se o retorno vier vazio, o Debezium não chegou a criar a publicação por falta de permissão ou por falha na inicialização.
+SELECT pubname FROM pg_publication;
+
