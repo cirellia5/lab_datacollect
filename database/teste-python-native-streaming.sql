@@ -12,7 +12,7 @@ INSERT INTO transacoes_financeiras (
     data_transacao, 
     hash_auditoria
 ) VALUES (
-    'conta-filipe-888', 
+    'conta-teste-777', 
     'conta-destino-999', 
     'DEBITO', 
     850.50, 
@@ -30,7 +30,7 @@ INSERT INTO transacoes_financeiras (
 
 UPDATE transacoes_financeiras 
 SET hash_auditoria = 'sha256_hash_MODIFICADO_pelo_sistema_67890'
-WHERE conta_origem = 'conta-filipe-777';
+WHERE conta_origem = 'conta-teste-777';
 
 
 -- =====================================================================
@@ -41,4 +41,4 @@ WHERE conta_origem = 'conta-filipe-777';
 -- via 'payload.before' e disparará o print: 🚨 [ALERTA] Transação DELETADA...
 
 DELETE FROM transacoes_financeiras 
-WHERE conta_origem = 'conta-filipe-777';
+WHERE conta_origem = 'conta-teste-777';
